@@ -28,11 +28,6 @@
     grid-template-columns: repeat(2, 1fr);
   }
 
-  /* Calendar grid: auto-fill */
-  .calendar-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  }
-
   /* Table scrolls only if needed */
   .table-container {
     overflow-x: visible;

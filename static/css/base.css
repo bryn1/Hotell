@@ -26,6 +26,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Dark mode: dark page background behind the dark cards (audit fix) */
+body.dark-mode {
+  background: var(--color-bg-primary);
+}
+
 /* ---- Headings ---- */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);

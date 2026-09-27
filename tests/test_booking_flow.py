@@ -136,6 +136,47 @@ def test_cancel_sets_status_cancelled(client):
     assert detail.json()["status"] == "cancelled"
 
 
+def test_recancel_cancelled_booking_returns_409(client):
+    # State guard: re-cancelling an already-cancelled booking is a conflict,
+    # not a silent 200.
+    booking_id = _book(client).json()["id"]
+    assert client.put(f"/api/bookings/{booking_id}/cancel").status_code == 200
+    resp = client.put(f"/api/bookings/{booking_id}/cancel")
+    assert resp.status_code == 409
+    assert "already cancelled" in resp.json()["detail"]
+
+
+def test_cancel_completed_booking_returns_409(client):
+    # State guard: a completed booking must not be cancellable.
+    booking_id = _book(client).json()["id"]
+    # Move the booking into the completed state directly (no completion
+    # endpoint exists in this demo). Use the SAME overridden session the
+    # TestClient uses (conftest binds get_db to a tmp_path SQLite file).
+    from app.database import get_db
+    from app.models.booking import Booking
+    from app.main import app
+    db = next(app.dependency_overrides[get_db]())
+    try:
+        booking = db.query(Booking).filter(Booking.id == booking_id).first()
+        booking.status = "completed"
+        db.commit()
+    finally:
+        db.close()
+    resp = client.put(f"/api/bookings/{booking_id}/cancel")
+    assert resp.status_code == 409
+    assert "Completed" in resp.json()["detail"]
+
+
+def test_list_bookings_includes_room_number(client):
+    # Fix: the bookings list carries the human room number ("201"), joined
+    # server-side, while keeping room_id for backward compatibility.
+    assert _book(client, room_id=1).status_code == 200
+    body = client.get("/api/bookings/").json()
+    assert len(body) == 1
+    assert body[0]["room_id"] == 1
+    assert body[0]["room_number"] == "101"
+
+
 # --- Room creation -----------------------------------------------------------
 
 def test_create_room_duplicate_room_number_rejected_400(client):

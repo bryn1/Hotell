@@ -38,6 +38,36 @@ def test_index_html_has_no_hardcoded_hotell_in_js():
         assert "/hotell/" not in content, f"{js} still hardcodes /hotell/"
 
 
+def test_api_constructing_js_has_no_hardcoded_hotell_literal():
+    # F9 extension: every JS file that constructs API URLs must derive its
+    # base from document.baseURI (utils/api.js API_BASE / app.js API) — no
+    # hardcoded "/hotell" string literal may remain anywhere in them.
+    api_js = [
+        "static/js/app.js",
+        "static/js/utils/api.js",
+        "static/js/ui/booking-flow.js",
+        "static/js/ui/render-bookings.js",
+        "static/js/ui/render-calendar.js",
+        "static/js/ui/render-rooms.js",
+    ]
+    for js in api_js:
+        with open(js, encoding="utf-8") as f:
+            content = f.read()
+        assert '"/hotell"' not in content, f"{js} hardcodes the \"/hotell\" literal"
+        assert "'/hotell'" not in content, f"{js} hardcodes the '/hotell' literal"
+        assert "/hotell/" not in content, f"{js} still hardcodes /hotell/"
+
+
+def test_app_js_api_base_is_derived_not_hardcoded():
+    # app.js must derive API from the served base path (document.baseURI),
+    # matching the utils/api.js mechanism.
+    with open("static/js/app.js", encoding="utf-8") as f:
+        content = f.read()
+    assert "document.baseURI" in content, (
+        "app.js API base must be derived from document.baseURI"
+    )
+
+
 def test_bare_serving_assets_resolve(client):
     # Bare run.py mode: index served at /, assets must resolve WITHOUT prefix.
     resp = client.get("/")

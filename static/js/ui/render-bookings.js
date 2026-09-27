@@ -133,7 +133,7 @@ const bookingsModule = (() => {
     return `<tr data-booking-id="${booking.id}">
       <td>#${booking.id}</td>
       <td title="${guestTitle}">${guest}</td>
-      <td>Rum ${booking.room_id}</td>
+      <td>Rum ${escapeHtml(booking.room_number || booking.room_id)}</td>
       <td>
         <div class="date-range">
           <span class="date-range__checkin">${formatCheckIn(booking.check_in)}</span>
@@ -184,10 +184,12 @@ const bookingsModule = (() => {
   function updateCount(total, filtered) {
     const countEl = document.getElementById('booking-count');
     if (countEl) {
+      // Swedish pluralization: "1 bokning" / "N bokningar"
+      const noun = total === 1 ? 'bokning' : 'bokningar';
       if (filtered !== total) {
-        countEl.textContent = `Visar ${filtered} av ${total} bokningar`;
+        countEl.textContent = `Visar ${filtered} av ${total} ${noun}`;
       } else {
-        countEl.textContent = `${total} bokningar`;
+        countEl.textContent = `${total} ${noun}`;
       }
     }
   }
@@ -210,7 +212,7 @@ const bookingsModule = (() => {
       ? booking.guest_name.slice(0, 25) + '…'
       : booking.guest_name;
 
-    detailEl.textContent = `Vill du verkligen avbryta bokning #${bookingId} (${guestName}, Rum ${booking.room_id}, ${formatCheckIn(booking.check_in)} – ${formatCheckOut(booking.check_out)})?`;
+    detailEl.textContent = `Vill du verkligen avbryta bokning #${bookingId} (${guestName}, Rum ${booking.room_number || booking.room_id}, ${formatCheckIn(booking.check_in)} – ${formatCheckOut(booking.check_out)})?`;
 
     // Remove old listeners by cloning
     if (confirmBtn) {

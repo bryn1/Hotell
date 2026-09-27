@@ -3,8 +3,10 @@
 
 // Global API base used by modules that still reference `${API}` directly
 // (e.g. booking-flow.js). Kept here so the orchestrator remains the single
-// owner of shared bootstrap globals.
-const API = "/hotell";
+// owner of shared bootstrap globals. Derived from the served index.html URL
+// (same mechanism as utils/api.js API_BASE) so both bare mode (app at /) and
+// a prefixed subpath mount work — no hardcoded prefix.
+const API = new URL('.', document.baseURI).pathname.replace(/\/$/, '');
 
 // ============================================================================
 // Navigation

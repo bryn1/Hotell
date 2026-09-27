@@ -143,7 +143,7 @@ const bookingFlowModule = (() => {
 
     container.innerHTML = `
       <div class="booking-form__header">
-        <h3 class="booking-form__title">Boka Rum ${room.room_number}</h3>
+        <h3 class="booking-form__title">Boka Rum ${escapeHtml(room.room_number)}</h3>
         <p class="booking-form__subtitle">${roomTypeLabel} — ${formatPrice(room.price_per_night)} kr/natt</p>
       </div>
 
@@ -366,7 +366,7 @@ const bookingFlowModule = (() => {
         <div class="booking-success__details">
           <div class="booking-success__detail-row">
             <span class="booking-success__detail-label">Rum:</span>
-            <span class="booking-success__detail-value">Rum ${roomNumber || '—'}</span>
+            <span class="booking-success__detail-value">Rum ${roomNumber ? escapeHtml(roomNumber) : '—'}</span>
           </div>
           <div class="booking-success__detail-row">
             <span class="booking-success__detail-label">Incheckning:</span>
@@ -381,11 +381,19 @@ const bookingFlowModule = (() => {
             <span class="booking-success__detail-value">${formatPrice(booking.total_price)} kr</span>
           </div>
         </div>
-        <p class="booking-success__note">En bekräftelse har skickats till ${escapeHtml(booking.guest_email)}.</p>
+        <p class="booking-success__note">Spara din referens — visa den vid incheckning.</p>
+        <div class="booking-success__actions">
+          <button type="button" class="btn btn-primary" id="booking-success-close-btn">Stäng</button>
+        </div>
       </div>
     `;
 
     modal.classList.remove('hidden');
+
+    const closeBtn = document.getElementById('booking-success-close-btn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeModal);
+    }
   }
 
   function showError(message) {

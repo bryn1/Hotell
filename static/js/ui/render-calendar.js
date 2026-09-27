@@ -43,6 +43,8 @@ const calendarModule = (() => {
   };
 
   // ---- API ----
+  // Returns null on fetch failure so the caller can fail CLOSED (show the
+  // error/empty state) instead of rendering an all-available matrix.
   async function fetchCalendar(year, month) {
     try {
       const res = await apiGet(Endpoints.calendar(year, month));
@@ -50,7 +52,7 @@ const calendarModule = (() => {
       return await res.json();
     } catch (err) {
       console.error('Failed to load calendar:', err);
-      return { days: [] };
+      return null;
     }
   }
 
@@ -197,7 +199,7 @@ const calendarModule = (() => {
     roomsMatrix.forEach(({ room, statuses }) => {
       const color = ROOM_TYPE_COLORS[room.room_type] || ROOM_TYPE_COLORS.single;
       const typeLabel = ROOM_TYPE_LABELS[room.room_type] || '';
-      const roomTitle = `Rum ${room.room_number}${typeLabel ? ` (${typeLabel})` : ''}`;
+      const roomTitle = `Rum ${escapeHtml(room.room_number)}${typeLabel ? ` (${typeLabel})` : ''}`;
 
       html += `<div class="calendar-grid__row" role="row">`;
       html +=
@@ -211,8 +213,8 @@ const calendarModule = (() => {
           ? 'calendar-grid__cell--available'
           : 'calendar-grid__cell--booked';
         const title = cell.available
-          ? `Rum ${room.room_number} ledigt ${cell.date}`
-          : `Rum ${room.room_number} bokat ${cell.date}`;
+          ? `Rum ${escapeHtml(room.room_number)} ledigt ${cell.date}`
+          : `Rum ${escapeHtml(room.room_number)} bokat ${cell.date}`;
         html +=
           `<div class="calendar-grid__cell ${stateCls}" role="gridcell" data-date="${cell.date}" aria-label="${title}" title="${title}">` +
             `<span class="sr-only">${cell.available ? 'Ledigt' : 'Bokat'}</span>` +
@@ -246,7 +248,7 @@ const calendarModule = (() => {
     container.innerHTML = filteredRooms.map((room) => {
       const color = ROOM_TYPE_COLORS[room.room_type] || ROOM_TYPE_COLORS.single;
       const typeLabel = ROOM_TYPE_LABELS[room.room_type] || room.room_type;
-      return `<div class="calendar-legend__item" title="Rum ${room.room_number} (${escapeHtml(typeLabel)})">
+      return `<div class="calendar-legend__item" title="Rum ${escapeHtml(room.room_number)} (${escapeHtml(typeLabel)})">
         <span class="calendar-legend__dot" style="background:${color.border}" aria-hidden="true"></span>
         <span class="calendar-legend__label">Rum ${escapeHtml(room.room_number)}</span>
       </div>`;
@@ -278,8 +280,25 @@ const calendarModule = (() => {
     await fetchRooms();
     const data = await fetchCalendar(currentYear, currentMonth);
     updateMonthLabel();
+    if (data === null) {
+      // Fail closed: fetch error must NOT render an all-available matrix.
+      renderCalendarError();
+      renderRoomLegend();
+      return;
+    }
     renderCalendarGrid(currentYear, currentMonth, data);
     renderRoomLegend();
+  }
+
+  // ---- Rendering: Error State ----
+  function renderCalendarError() {
+    const container = document.getElementById('calendar-weeks');
+    if (!container) return;
+    container.innerHTML = `
+      <div class="calendar-empty" role="alert">
+        <div class="calendar-empty__icon" aria-hidden="true">📅</div>
+        <p class="calendar-empty__message">Kunde inte läsa in kalendern. Försök igen.</p>
+      </div>`;
   }
 
   // ---- Public API ----
