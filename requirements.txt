@@ -1,4 +1,4 @@
-# MC#2317 pin-fix for svarkor-ai/hotell -- exact pins only (vm106 build gate rejects >= ranges and the
+# MC#2317 pin-fix for bryn1/hotell -- exact pins only (vm106 build gate rejects >= ranges and the
 # uvicorn[standard] extra). CHANGES: all >= -> == ; uvicorn[standard]>=0.34.0 -> uvicorn==0.34.0.
 fastapi==0.115.0
 uvicorn==0.34.0

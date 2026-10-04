@@ -1,6 +1,6 @@
 {
   "_comment": [
-    "vm106 hosting config for svarkor-ai/hotell -- MC#2317. Strict JSON (no yaml lib; comments only here).",
+    "vm106 hosting config for bryn1/hotell -- MC#2317. Strict JSON (no yaml lib; comments only here).",
     "FastAPI (app.main:app). exec=server.py binds 0.0.0.0:8117 (run.py binds 8000+reload -- not used by the renderer).",
     "Needs the pin-fixed requirements.txt (ranged pins + uvicorn[standard] extra rewritten to exact)."
   ],

@@ -44,7 +44,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8500 --reload
 
 ## Deploy (vm106, git-medierad)
 
-Gunilla-appen (`hotell`) är registrerad i `github.com/svarkor-ai/hosting` `apps.yaml`
+Gunilla-appen (`hotell`) är registrerad i `github.com/bryn1/hosting` `apps.yaml`
 (`type: service`, port `8117`, exec `server.py`). Push till hosting-repos main:
 vm106:s pull-timer renderar systemd-unit `vm106-app-hotell.service` + nginx-location
 `/hotell/` → proxy till `127.0.0.1:8117`. Se `apps/hotell/` för den deployade kopian.
