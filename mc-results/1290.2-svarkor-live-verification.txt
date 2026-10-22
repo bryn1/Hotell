@@ -1,0 +1,28 @@
+MC 1290.2 — svarkor integration + live verification (2026-09-19)
+
+CLAIM: Audit findings F1, F2, F3, F5, F7 (+F4 conftest reset) from the
+Hotell senior audit (1290.1) are fixed, tested, merged to master, pushed,
+deployed, and verified live.
+
+CHECKS RUN (all by svarkor, 2026-09-19):
+1. Local suite on audit-fix-2: pytest tests/ -q -> 42 passed (23 old + 19 new regression tests).
+2. Clean-clone verification (fresh git clone of audit-fix-2, NO .data dir):
+   - import app.main -> BOOT OK (F1 fixed: main.py mkdirs .data matching config DB_URL)
+   - pytest tests/ -q -> 42 passed
+3. Frontend XSS (F2): escapeHtml now applied to guest_name in
+   render-bookings.js (cell + title attr) and guest_email in
+   booking-flow.js success view — verified by grep in clean clone.
+4. Merged to master: ff59190 "merge: audit fixes ... (MC 1290.2)",
+   pushed to origin/master (svarkor-ai/Hotell).
+5. Deployed: synced to hosting repo apps/hotell/, pushed hosting main
+   (5b64d64), vm106 pull-timer picked it up, /hotell/ -> 200.
+6. Live probes against https://sibbamala.com/hotell/:
+   - GET /api/calendar/2027/13 -> 400 "Månad måste vara mellan 1 och 12" (was 500) [F3]
+   - GET /api/calendar/2027/0  -> 400 [F3]
+   - POST /api/rooms/ price_per_night=-500 -> 400 "Pris per natt måste vara positivt" (was 201) [F5]
+   - POST /api/rooms/1/book guest_name="   " -> 400 (was 200) [F5]
+   - GET /api/bookings/?room_id=0 -> [] (was all bookings) [F7]
+   - POST valid booking -> 200, total_price=2400 correct (regression clean)
+   - GET /hotell/ -> 200
+
+VERIFY_EXIT=0

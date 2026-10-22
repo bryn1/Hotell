@@ -1,0 +1,30 @@
+--- DISPATCH BRIEF ---
+WHAT: Senior-level truth/business-logic audit of svarkor-ai/Hotell (public PoC hotel-booking demo). READ-ONLY audit: find and REPRODUCE bugs, do NOT fix anything. Produce a findings report.
+
+CONTEXT: This is the remaining work of parent MC 1286. Child 1286.1 already fixed 3 known bugs (same-day free booking, negative price, 500 on invalid date) — commit f8bffbd on master, 23 tests passing. Do NOT re-report those three; look for what they missed.
+
+SCOPE (from owner brief 2026-09-13): booking logic, double-booking, booking/cancel flow, API integrity, PoC-appropriate security classification, test quality (anti false-green), clean-clone build, code quality. NO feature creep, NO production auth/payments.
+
+OUT_OF_SCOPE: production auth, payments, multi-user accounts, infra changes beyond the app repo.
+
+METHOD:
+1. Read the code: /srv/workspace/Hotell/app/ (routers/rooms.py, routers/bookings.py, routers/calendar.py, models/, main.py, database.py) and tests/.
+2. For EVERY suspected bug: write a repro (pytest test or curl against a local instance started from a CLEAN CLONE of the repo) and run it. A finding without a passing repro is not a finding.
+3. Run the full test suite from the clean clone: PYTHONPATH=. .venv/bin/pytest tests/ -q. Note any test that passes vacuously (asserts nothing, mocks the thing it should exercise, or tests the mock).
+4. Check specifically: overlapping bookings across rooms/dates, cancel-then-rebook races, price calculation edge cases (capacity, room types), calendar endpoint correctness vs bookings, 404/422 handling consistency, duplicate room_number, booking of nonexistent room, date parsing edge cases beyond the 3 fixed ones.
+
+DELIVERABLE: findings report at /srv/workspace/svarkor-hotell-audit/<your-seat>/1286.2-audit-findings-<date>.md with, per finding: ID, severity (CRITICAL/HIGH/MED/LOW), file:line, description, EXACT repro command + observed output, suggested minimal fix. End with the clean-clone test-suite result. If NO new findings: say so explicitly and show the checks you ran.
+
+DoD: report file exists with reproducible evidence; clean-clone pytest run recorded with exit code. Do NOT commit code changes — audit only.
+
+SKILLS: workspace-convention, systematic-debugging
+READ: /srv/workspace/Hotell/LEDGER.md, /srv/workspace/Hotell/mc-results/audit-parent-brief.txt
+
+When done, END your reply with exactly this block and nothing after it:
+--- RESULT ---
+STATUS: DONE | BLOCKED
+FILES: <paths you wrote, one per line, or "none">
+DID: <what you did, <=4 lines>
+VERIFY: <the check you ran + its outcome, or "not run">
+BLOCKERS: <concrete blocker, or "none">
+--- END ---

@@ -1,0 +1,5 @@
+Owner-relayed audit of svarkor-ai/Hotell (public PoC hotel-booking demo). Owner ask (2026-09-13, Telegram): "Gör en ny senior-level audit av svarkor-ai/Hotell ... truth/business-logic audit snarare än fler features ... Fixa konkreta buggar du hittar. Lägg till regressionstester. Kör hela testsviten. Kör clean-clone-verifiering. Verifiera live deployment."
+
+SCOPE: booking logic, double-booking, booking/cancel flow, API integrity, PoC-appropriate security classification, test quality (anti false-green), clean-clone, code quality. NO feature creep, NO production auth/payments.
+
+OUT_OF_SCOPE: production auth, payments, multi-user accounts, infra changes beyond the app repo.

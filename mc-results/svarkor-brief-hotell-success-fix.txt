@@ -1,0 +1,34 @@
+--- DISPATCH BRIEF ---
+WHAT:  Fixa bokningsbekräftelsemodalen så den visar rumsnumret ("Rum 101") i stället för "Rum —".
+SKILLS: workspace-convention; test-driven-development
+READ:   /srv/workspace/Hotell/static/js/ui/booking-flow.js  (rad 285-307 = handleSubmit, 345-370 = showSuccess, 447-470 = closeModal)
+
+ROTORSAG (redan diagnostiserad, verifierad live): I `handleSubmit` anropas `closeModal()` (rad 292) INNAN
+`showSuccess(booking)` (rad 293). `closeModal()` sätter `currentRoom = null` (rad 465). `showSuccess` läser sedan
+`currentRoom.room_number` (rad 359) → null → success-vyn visar "Rum —".
+
+FIX (minimal, ONE end-to-end ändring — gör inte om fler delar av filen):
+1. I `handleSubmit`, fånga rumsnumret FÖRE closeModal:
+     const roomNumber = currentRoom ? currentRoom.room_number : null;
+   sedan:  closeModal();  showSuccess(booking, roomNumber);
+2. Ändra signaturen till  `function showSuccess(booking, roomNumber)`  och rad 359 till:
+     <span class="booking-success__detail-value">Rum ${roomNumber || '—'}</span>
+   Om `booking`-svaret redan innehåller `room_number`/`room`, prioritera att hämta det därifrån och fall
+   tillbaka på parametern — men LCDC-varianten är att bara skicka parametern.
+3. Rör INTE något annat i filen. Ingen refaktor av resten.
+
+KONTROLLERA att andra anrop till showSuccess (om några) uppdateras till den nya signaturen.
+
+DoD: /srv/workspace/Hotell/static/js/ui/booking-flow.js uppdaterad så att success-vyn renderar rumsnumret
+- Sintaxkoll klar: `node --check` på filen ger exit 0.
+- Skriv en liten enhetstest som bygger modalen och assertar att "Rum 101" syns i success-vyn givet roomNumber=101 (om en testram finns för filen; annars `node --check` + beskriv vad du verifierade manuellt).
+
+RESULT:
+When done, END your reply with exactly this block and nothing after it:
+--- RESULT ---
+STATUS: DONE | BLOCKED
+FILES: <paths you wrote, one per line, or "none">
+DID: <what you did, <=4 lines>
+VERIFY: <the check you ran + its outcome, or "not run">
+BLOCKERS: <concrete blocker, or "none">
+--- END ---

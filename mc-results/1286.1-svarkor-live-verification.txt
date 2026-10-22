@@ -1,0 +1,19 @@
+MC 1286.1 — svarkor integration + live verification (2026-09-18)
+
+CLAIM: The 3 verified booking-validation bugs (same-day free booking,
+negative price, 500 on invalid date) are fixed, tested, and live on the
+deployed instance.
+
+CHECKS RUN (all by svarkor, 2026-09-18):
+1. Local test suite: cd /srv/workspace/Hotell && PYTHONPATH=. .venv/bin/pytest tests/ -q
+   -> 23 passed, 0 failed (old 8 + new regression tests).
+2. Commit on master: git log shows f8bffbd
+   "fix: booking validation - reject same-day/reversed dates, invalid dates 400 (MC 1286.1)"
+   on master == origin/master == audit-fix.
+3. Live probes against https://sibbamala.com/hotell/ (the deployed instance):
+   - POST /api/rooms/1/book check_in == check_out        -> HTTP 400 "Utcheckning måste vara efter incheckning" (was 200, total_price=0)
+   - POST /api/rooms/1/book check_out < check_in         -> HTTP 400 "Utcheckning måste vara efter incheckning" (was 200, total_price=-1200)
+   - POST /api/rooms/1/book check_in="not-a-date"        -> HTTP 400 "Ogiltigt datumformat, använd YYYY-MM-DD" (was HTTP 500)
+   - GET /hotell/                                        -> HTTP 200
+
+VERIFY_EXIT=0

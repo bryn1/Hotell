@@ -1,0 +1,32 @@
+--- DISPATCH BRIEF ---
+WHAT:  Deploya hotell success-vy-fixen till live https://sibbamala.com/hotell/ och verifiera live.
+SKILLS: workspace-convention
+READ:   Kodfixen ligger i /srv/workspace/Hotell/static/js/ui/booking-flow.js (efter föregående kodkort).
+
+KONTEXT: Prior work föregående fix (912.1) deployades exakt så här — följ samma mönster:
+  - Hotell-källrepo: git@github.com:svarkor-ai/Hotell.git  (master = senaste/sant)
+  - hosting-repo:   git@github.com:svarkor-ai/hosting.git   (apps/hotell = den servade källan)
+  - vm106 drar hosting main via pull-timer ~1-2 min → verifiera mot PUBLIKA URL när uppdriven.
+
+STEG:
+1. Se till att Hotell master har kodfixen (commit+push om inte gjord av kodkortet).
+2. Kopiera den uppdaterade /srv/workspace/Hotell/static/js/ui/booking-flow.js till
+   /srv/workspace/hosting/apps/hotell/static/js/ui/booking-flow.js
+3. Commit + push hosting main (med beskrivande meddelande).
+4. Vänta på vm106 pull-timer, verifiera live.
+
+DoD: /srv/workspace/hosting/apps/hotell/static/js/ui/booking-flow.js innehåller fixen (grep `showSuccess(booking, roomNumber)` eller motsvarande fixmarkör).
+- `git -C /srv/workspace/hosting log --oneline -1` visar din deploy-commit.
+- Efter pull-timern: `curl -s https://sibbamala.com/hotell/static/js/ui/booking-flow.js | grep showSuccess` visar den nya signaturen -- dvs LIVE-filen är uppdaterad (inte en 404 / gammal byte).
+- `curl -s -o /dev/null -w "%{http_code}" https://sibbamala.com/hotell/` → 200 (siten svara).
+
+RESULT:
+When done, END your reply with exactly this block and nothing after it:
+--- RESULT ---
+STATUS: DONE | BLOCKED
+FILES: <paths you wrote, one per line, or "none">
+DID: <what you did, <=4 lines>
+VERIFY: <the check you ran + its outcome, or "not run">
+BLOCKERS: <concrete blocker, or "none">
+--- END ---
+VERIFY_EXIT=0

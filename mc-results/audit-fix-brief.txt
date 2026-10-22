@@ -1,0 +1,41 @@
+--- DISPATCH BRIEF ---
+WHAT: Fix 3 verified booking-validation bugs in app/routers/rooms.py book_room() + add regression tests. NO new features, NO architecture changes.
+
+CONTEXT: Public PoC hotel-booking demo (svarkor-ai/Hotell). Live-probed 2026-09-13, all three bugs REPRODUCED on the deployed instance:
+
+F1 (CRITICAL, business logic): POST /api/rooms/{id}/book with check_in == check_out returns 200, creates CONFIRMED booking with total_price=0 (free booking). Repro: check_in=2026-09-17, check_out=2026-09-17 -> {"total_price":0,"status":"confirmed"}.
+F2 (CRITICAL, business logic): check_out BEFORE check_in returns 200 with NEGATIVE total_price (-1200). Repro: check_in=2026-09-18, check_out=2026-09-17 -> {"total_price":-1200,"status":"confirmed"}.
+F3 (HIGH, error handling): invalid date strings (e.g. "not-a-date") raise unhandled ValueError from datetime.strptime -> HTTP 500 "Internal Server Error" instead of a clear 400.
+
+REQUIRED FIX (all in book_room(), keep it minimal):
+- After parsing dates: if check_out <= check_in -> HTTPException(400, "Utcheckning måste vara efter incheckning") (covers both F1 same-day and F2 reversed).
+- Wrap both strptime calls in try/except ValueError -> HTTPException(400, "Ogiltigt datumformat, använd YYYY-MM-DD").
+- Do NOT add past-date rejection, auth, payments or any other feature — PoC scope.
+
+REGRESSION TESTS (add to tests/, follow existing style in tests/test_rooms_api.py — TestClient + tmp_path sqlite fixture; reuse that fixture pattern, consider extracting to conftest.py):
+- same-day booking rejected 400
+- check_out before check_in rejected 400
+- invalid date format rejected 400 (not 500)
+- valid booking returns correct nights * price_per_night total (assert exact number)
+- overlapping confirmed booking rejected 400
+- booking starting exactly when previous ends ALLOWED (adjacency)
+- booking ending exactly when next starts ALLOWED
+- cancelled booking does not block rebooking same dates
+- cancel: PUT /api/bookings/{id}/cancel returns 200, status becomes "cancelled", unknown id 404
+- GET /api/bookings/ returns list, GET /api/bookings/{id} 404 for unknown
+- POST /api/rooms/ duplicate room_number rejected 400
+- 404 for booking with invalid room_id
+
+DoD: `cd /srv/workspace/Hotell && PYTHONPATH=. .venv/bin/pytest tests/ -q` exits 0 with ALL tests passing (old 8 + new ~12), AND `git -C /srv/workspace/Hotell log --oneline -1` shows your commit on a branch named audit-fix. Commit code + tests in coherent commits. Do NOT push to master — svarkor integrates.
+
+SKILLS: workspace-convention, test-driven-development
+READ: /srv/workspace/Hotell/app/routers/rooms.py, /srv/workspace/Hotell/tests/test_rooms_api.py, /srv/workspace/Hotell/LEDGER.md
+
+When done, END your reply with exactly this block and nothing after it:
+--- RESULT ---
+STATUS: DONE | BLOCKED
+FILES: <paths you wrote, one per line, or "none">
+DID: <what you did, <=4 lines>
+VERIFY: <the check you ran + its outcome, or "not run">
+BLOCKERS: <concrete blocker, or "none">
+--- END ---
