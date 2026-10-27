@@ -12,7 +12,7 @@ Komplett webbaserad bokningssida för hotellrum. FastAPI + SQLite backend, vanli
 - Konflikt-detektering: dubbelbokning av samma rum/datum blockeras
 
 ## Teknikstack
-- **Backend**: FastAPI + SQLAlchemy + SQLite (aiosqlite)
+- **Backend**: FastAPI + SQLite (SQLAlchemy sync engine)
 - **Frontend**: Vanilla JS (rooms, bookings, calendar, booking-flow) + design-system CSS
 - **Konfig**: pydantic-settings (`.env`)
 

@@ -14,6 +14,11 @@ class Booking(Base):
     check_out = Column(Date, nullable=False)
     total_price = Column(Integer, default=0)  # in SEK
     status = Column(String(20), default="confirmed")  # confirmed, cancelled, completed
+    # Ownership proof for cancel (card 11535): random token generated at
+    # booking time, returned exactly once in the booking-success response;
+    # the cancel endpoint requires it back as X-Cancel-Token. NULL only on
+    # rows that predate the fix (legacy demo rows).
+    cancel_token = Column(String, nullable=True)
 
     def __repr__(self):
         return f"<Booking #{self.id} Room {self.room_id}>"

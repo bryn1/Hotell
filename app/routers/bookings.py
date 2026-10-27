@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
@@ -13,7 +13,6 @@ router = APIRouter(prefix="/api/bookings", tags=["bookings"])
 class BookingOut(BaseModel):
     id: int
     guest_name: str
-    guest_email: str
     room_id: int
     room_number: Optional[str] = None
     check_in: str
@@ -22,19 +21,13 @@ class BookingOut(BaseModel):
     status: str
 
 
-class BookingCreate(BaseModel):
-    guest_name: str
-    guest_email: str
-    check_in: str
-    check_out: str
-    rooms: List[int]
-
-
 def _to_dict(booking: Booking, room_number: Optional[str] = None) -> dict:
+    # Read-minimization (card 11535): guest_email/guest_phone are stored but
+    # never returned — the demo has no auth, so every visitor could otherwise
+    # harvest the whole guest register from GET /api/bookings/.
     return {
         "id": booking.id,
         "guest_name": booking.guest_name,
-        "guest_email": booking.guest_email,
         "room_id": booking.room_id,
         "room_number": room_number,
         "check_in": booking.check_in.isoformat() if isinstance(booking.check_in, date) else booking.check_in,
@@ -76,10 +69,21 @@ def get_booking(booking_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{booking_id}/cancel")
-def cancel_booking(booking_id: int, db: Session = Depends(get_db)):
+def cancel_booking(
+    booking_id: int,
+    x_cancel_token: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(404, "Booking not found")
+    # Ownership (card 11535): bookings created after the fix carry a
+    # cancel_token handed out exactly once in the booking-success response;
+    # cancelling requires it back in the X-Cancel-Token header. Rows with
+    # cancel_token NULL are pre-fix legacy demo rows — they keep the old
+    # any-caller-allowed behaviour (explicit demo allowance).
+    if booking.cancel_token is not None and x_cancel_token != booking.cancel_token:
+        raise HTTPException(403, "Du kan bara avboka dina egna bokningar")
     # State guard: cancelling is only valid from `confirmed`. Re-cancelling a
     # cancelled booking or cancelling a completed booking is a conflict.
     if booking.status == "cancelled":

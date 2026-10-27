@@ -118,7 +118,11 @@ def test_cancelled_booking_does_not_block_rebooking(client, book):
     assert first.status_code == 200
     booking_id = first.json()["id"]
 
-    cancel = client.put(f"/api/bookings/{booking_id}/cancel")
+    # Ownership token from the booking-success response (card 11535).
+    cancel = client.put(
+        f"/api/bookings/{booking_id}/cancel",
+        headers={"X-Cancel-Token": first.json()["cancel_token"]},
+    )
     assert cancel.status_code == 200
     assert cancel.json()["status"] == "cancelled"
 
@@ -136,7 +140,10 @@ def test_list_bookings_returns_list(client, book):
     body = resp.json()
     assert isinstance(body, list)
     assert len(body) == 1
-    assert body[0]["guest_email"] == "gast@example.com"
+    # Read-minimization (card 11535): the list carries the guest NAME for
+    # the demo list, but never the e-mail.
+    assert body[0]["guest_name"] == "Test Gast"
+    assert "guest_email" not in body[0]
 
 
 def test_get_booking_unknown_id_404(client):
@@ -152,26 +159,31 @@ def test_cancel_unknown_booking_404(client):
 
 
 def test_cancel_sets_status_cancelled(client, book):
-    booking_id = book().json()["id"]
-    resp = client.put(f"/api/bookings/{booking_id}/cancel")
+    created = book().json()
+    resp = client.put(
+        f"/api/bookings/{created['id']}/cancel",
+        headers={"X-Cancel-Token": created["cancel_token"]},
+    )
     assert resp.status_code == 200
-    detail = client.get(f"/api/bookings/{booking_id}")
+    detail = client.get(f"/api/bookings/{created['id']}")
     assert detail.json()["status"] == "cancelled"
 
 
 def test_recancel_cancelled_booking_returns_409(client, book):
     # State guard: re-cancelling an already-cancelled booking is a conflict,
     # not a silent 200.
-    booking_id = book().json()["id"]
-    assert client.put(f"/api/bookings/{booking_id}/cancel").status_code == 200
-    resp = client.put(f"/api/bookings/{booking_id}/cancel")
+    created = book().json()
+    headers = {"X-Cancel-Token": created["cancel_token"]}
+    assert client.put(f"/api/bookings/{created['id']}/cancel", headers=headers).status_code == 200
+    resp = client.put(f"/api/bookings/{created['id']}/cancel", headers=headers)
     assert resp.status_code == 409
     assert "already cancelled" in resp.json()["detail"]
 
 
 def test_cancel_completed_booking_returns_409(client, book):
     # State guard: a completed booking must not be cancellable.
-    booking_id = book().json()["id"]
+    book_response = book().json()
+    booking_id = book_response["id"]
     # Move the booking into the completed state directly (no completion
     # endpoint exists in this demo). Use the SAME overridden session the
     # TestClient uses (conftest binds get_db to a tmp_path SQLite file).
@@ -185,7 +197,10 @@ def test_cancel_completed_booking_returns_409(client, book):
         db.commit()
     finally:
         db.close()
-    resp = client.put(f"/api/bookings/{booking_id}/cancel")
+    resp = client.put(
+        f"/api/bookings/{booking_id}/cancel",
+        headers={"X-Cancel-Token": book_response["cancel_token"]},
+    )
     assert resp.status_code == 409
     assert "Completed" in resp.json()["detail"]
 

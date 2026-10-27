@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from app.database import get_db
 from app.models.room import Room
 from app.models.booking import Booking
 from pydantic import BaseModel
 from datetime import date, datetime
 import re
+import secrets
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 
@@ -55,26 +56,30 @@ class BookingRequest(BaseModel):
 class BookingOut(BaseModel):
     id: int
     guest_name: str
-    guest_email: str
     room_id: int
     check_in: str
     check_out: str
     total_price: int
     status: str
+    cancel_token: Optional[str] = None
 
 
 def _booking_to_dict(booking: Booking) -> dict:
     ci = booking.check_in.isoformat() if isinstance(booking.check_in, date) else booking.check_in
     co = booking.check_out.isoformat() if isinstance(booking.check_out, date) else booking.check_out
+    # Read-minimization (card 11535): no PII in responses — guest_email/
+    # guest_phone are stored but never returned. cancel_token is returned
+    # exactly once, here in the booking-success response, as the ownership
+    # proof the cancel endpoint later requires (X-Cancel-Token).
     return {
         "id": booking.id,
         "guest_name": booking.guest_name,
-        "guest_email": booking.guest_email,
         "room_id": booking.room_id,
         "check_in": ci,
         "check_out": co,
         "total_price": booking.total_price,
         "status": booking.status,
+        "cancel_token": booking.cancel_token,
     }
 
 
@@ -158,6 +163,9 @@ def book_room(room_id: int, booking: BookingRequest, db: Session = Depends(get_d
         check_in=ci,
         check_out=co,
         total_price=total,
+        # Ownership proof for cancel (card 11535); handed to the caller once
+        # in the success response and required back as X-Cancel-Token.
+        cancel_token=secrets.token_urlsafe(16),
     )
     db.add(db_booking)
     db.commit()

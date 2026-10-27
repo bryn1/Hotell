@@ -142,8 +142,11 @@ def test_list_bookings_room_id_filter_matches(client, book):
 
 
 def test_list_bookings_status_filter_applies(client, book):
-    booking_id = book().json()["id"]
-    client.put(f"/api/bookings/{booking_id}/cancel")
+    created = book().json()
+    client.put(
+        f"/api/bookings/{created['id']}/cancel",
+        headers={"X-Cancel-Token": created["cancel_token"]},
+    )
     resp = client.get("/api/bookings/", params={"status": "confirmed"})
     assert resp.status_code == 200
     assert resp.json() == []

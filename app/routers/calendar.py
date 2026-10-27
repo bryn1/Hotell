@@ -20,6 +20,12 @@ def _validate_year_month(year: int, month: int) -> None:
         raise HTTPException(400, f"År måste vara mellan {MIN_YEAR} och {MAX_YEAR}")
     if not (1 <= month <= 12):
         raise HTTPException(400, "Månad måste vara mellan 1 och 12")
+    # Audit W2 (card 11535): the month-end computation builds date(year+1, 1, 1)
+    # for December, so MAX_YEAR + December passes both bounds above and still
+    # overflows date() -> 500. Reject the one combination that cannot be
+    # rendered; every neighbour (9999/11, 9999/1) stays valid.
+    if year == MAX_YEAR and month == 12:
+        raise HTTPException(400, "År och månad kan inte kombineras")
 
 
 class DaySlot(BaseModel):

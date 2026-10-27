@@ -2,6 +2,7 @@ import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from sqlalchemy.exc import OperationalError
 from app.database import engine, SessionLocal, Base
 from app.models.room import Room
 from app.routers.rooms import router as rooms_router
@@ -18,6 +19,20 @@ settings = get_settings()
 os.makedirs(".data", exist_ok=True)
 
 Base.metadata.create_all(bind=engine)
+
+# Light forward-only migration (card 11535): create_all never alters an
+# existing table, so an already-deployed bookings table has no cancel_token
+# column. SQLite has no ADD COLUMN IF NOT EXISTS, so the ALTER is attempted
+# and the OperationalError of an existing column is the expected no-op.
+# Forward-only by design — there is no downgrade path.
+try:
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "ALTER TABLE bookings ADD COLUMN cancel_token VARCHAR"
+        )
+except OperationalError:
+    pass  # column already present (fresh create_all or a previous boot)
+
 # Idempotently seed the four demo rooms so the site is shoppable on a fresh
 # deploy / empty DB. Safe to run every boot: existing rooms are skipped.
 seed_rooms(SessionLocal())
