@@ -3,95 +3,118 @@
 Covers the three audit-verified bugs (same-day free booking, reversed dates
 with negative price, 500 on invalid date strings) plus the booking/cancel
 flow and overlap rules the audit brief requires. Uses the shared `client`
-fixture from conftest.py.
+and `book` fixtures from conftest.py; all valid range dates derive from
+date.today() so the F8 past-date guard (MC 1310.1) cannot silently 422
+them (MC 11534).
 """
-from fastapi.testclient import TestClient
-
-
-def _book(client: TestClient, room_id: int = 1, **overrides) -> dict:
-    payload = {
-        "guest_name": "Test Gast",
-        "guest_email": "gast@example.com",
-        "guest_phone": "",
-        "check_in": "2026-10-01",
-        "check_out": "2026-10-03",
-    }
-    payload.update(overrides)
-    return client.post(f"/api/rooms/{room_id}/book", json=payload)
+from datetime import date, timedelta
 
 
 # --- The three audit bugs ---------------------------------------------------
 
-def test_same_day_booking_rejected_400(client):
+def test_same_day_booking_rejected_400(book):
     # F1: check_in == check_out used to return 200 with total_price=0.
-    resp = _book(client, check_in="2026-10-01", check_out="2026-10-01")
+    # Future range so the 400 comes from range validation, not the F8
+    # guard; test_past_same_day_booking_rejected_422 covers that split.
+    resp = book(check_in=book.base_in.isoformat(), check_out=book.base_in.isoformat())
     assert resp.status_code == 400
     assert "efter" in resp.json()["detail"]
 
 
-def test_check_out_before_check_in_rejected_400(client):
+def test_past_same_day_booking_rejected_422(book):
+    # MC 11534 split: a past check_in makes the F8 guard win with 422
+    # before the 400 range validation can run.
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    resp = book(check_in=yesterday, check_out=yesterday)
+    assert resp.status_code == 422
+
+
+def test_check_out_before_check_in_rejected_400(book):
     # F2: check_out < check_in used to return 200 with a NEGATIVE total.
-    resp = _book(client, check_in="2026-10-03", check_out="2026-10-01")
+    # Future pair so the 400 is range validation, not the F8 guard.
+    resp = book(check_in=book.base_out.isoformat(), check_out=book.base_in.isoformat())
     assert resp.status_code == 400
     assert "efter" in resp.json()["detail"]
 
 
-def test_invalid_date_format_rejected_400_not_500(client):
-    # F3: "not-a-date" used to raise ValueError -> HTTP 500.
-    resp = _book(client, check_in="not-a-date")
+def test_past_reversed_dates_rejected_422(book):
+    # MC 11534 split: reversed AND in the past -> the F8 guard wins (422).
+    resp = book(
+        check_in=(date.today() - timedelta(days=3)).isoformat(),
+        check_out=(date.today() - timedelta(days=5)).isoformat(),
+    )
+    assert resp.status_code == 422
+
+
+def test_invalid_date_format_rejected_400_not_500(book):
+    # F3: "not-a-date" used to raise ValueError -> HTTP 500. The format
+    # check runs before the F8 guard, so this stays a 400 on any date.
+    resp = book(check_in="not-a-date")
     assert resp.status_code == 400
     assert "Ogiltigt datumformat" in resp.json()["detail"]
 
 
-def test_invalid_check_out_format_rejected_400_not_500(client):
-    resp = _book(client, check_out="2026/10/03")
+def test_invalid_check_out_format_rejected_400_not_500(book):
+    # Slash-separated date: invalid under YYYY-MM-DD, so the format check
+    # (a 400) fires before the F8 guard regardless of the base dates.
+    resp = book(check_out="2026/10/03")
     assert resp.status_code == 400
     assert "Ogiltigt datumformat" in resp.json()["detail"]
 
 
 # --- Valid booking math -----------------------------------------------------
 
-def test_valid_booking_returns_exact_total(client):
+def test_valid_booking_returns_exact_total(book):
     # Room 1 (seeded "101") costs 1200 kr/night; 2 nights => 2400.
-    resp = _book(client, check_in="2026-10-01", check_out="2026-10-03")
+    resp = book()
     assert resp.status_code == 200
     body = resp.json()
     assert body["total_price"] == 2400
     assert body["status"] == "confirmed"
 
 
-def test_booking_unknown_room_404(client):
-    resp = _book(client, room_id=9999)
+def test_booking_unknown_room_404(book):
+    # The room-exists guard runs before any date handling, date-independent.
+    resp = book(room_id=9999)
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Room not found"
 
 
 # --- Overlap rules ----------------------------------------------------------
 
-def test_overlapping_confirmed_booking_rejected_400(client):
-    assert _book(client, check_in="2026-10-01", check_out="2026-10-03").status_code == 200
-    resp = _book(client, check_in="2026-10-02", check_out="2026-10-04")
+def test_overlapping_confirmed_booking_rejected_400(book):
+    assert book().status_code == 200
+    resp = book(
+        check_in=(book.base_in + timedelta(days=1)).isoformat(),
+        check_out=(book.base_out + timedelta(days=1)).isoformat(),
+    )
     assert resp.status_code == 400
     assert resp.json()["detail"] == "Room not available for these dates"
 
 
-def test_booking_starting_when_previous_ends_allowed(client):
-    # Adjacency: previous ends 10-03, new starts 10-03 -> allowed.
-    assert _book(client, check_in="2026-10-01", check_out="2026-10-03").status_code == 200
-    resp = _book(client, check_in="2026-10-03", check_out="2026-10-05")
+def test_booking_starting_when_previous_ends_allowed(book):
+    # Adjacency: previous ends base_out, new starts base_out -> allowed.
+    assert book().status_code == 200
+    resp = book(
+        check_in=book.base_out.isoformat(),
+        check_out=(book.base_out + timedelta(days=2)).isoformat(),
+    )
     assert resp.status_code == 200
     assert resp.json()["total_price"] == 2400
 
 
-def test_booking_ending_when_next_starts_allowed(client):
-    # Adjacency the other way: new ends 10-01, existing starts 10-01 -> allowed.
-    assert _book(client, check_in="2026-10-01", check_out="2026-10-03").status_code == 200
-    resp = _book(client, check_in="2026-09-29", check_out="2026-10-01")
+def test_booking_ending_when_next_starts_allowed(book):
+    # Adjacency the other way: new ends base_in, existing starts base_in.
+    assert book().status_code == 200
+    resp = book(
+        check_in=(book.base_in - timedelta(days=2)).isoformat(),
+        check_out=book.base_in.isoformat(),
+    )
     assert resp.status_code == 200
 
 
-def test_cancelled_booking_does_not_block_rebooking(client):
-    first = _book(client, check_in="2026-10-01", check_out="2026-10-03")
+def test_cancelled_booking_does_not_block_rebooking(client, book):
+    first = book()
     assert first.status_code == 200
     booking_id = first.json()["id"]
 
@@ -99,15 +122,15 @@ def test_cancelled_booking_does_not_block_rebooking(client):
     assert cancel.status_code == 200
     assert cancel.json()["status"] == "cancelled"
 
-    resp = _book(client, check_in="2026-10-01", check_out="2026-10-03")
+    resp = book()
     assert resp.status_code == 200
     assert resp.json()["status"] == "confirmed"
 
 
 # --- Booking list / detail / cancel ------------------------------------------
 
-def test_list_bookings_returns_list(client):
-    assert _book(client).status_code == 200
+def test_list_bookings_returns_list(client, book):
+    assert book().status_code == 200
     resp = client.get("/api/bookings/")
     assert resp.status_code == 200
     body = resp.json()
@@ -128,27 +151,27 @@ def test_cancel_unknown_booking_404(client):
     assert resp.json()["detail"] == "Booking not found"
 
 
-def test_cancel_sets_status_cancelled(client):
-    booking_id = _book(client).json()["id"]
+def test_cancel_sets_status_cancelled(client, book):
+    booking_id = book().json()["id"]
     resp = client.put(f"/api/bookings/{booking_id}/cancel")
     assert resp.status_code == 200
     detail = client.get(f"/api/bookings/{booking_id}")
     assert detail.json()["status"] == "cancelled"
 
 
-def test_recancel_cancelled_booking_returns_409(client):
+def test_recancel_cancelled_booking_returns_409(client, book):
     # State guard: re-cancelling an already-cancelled booking is a conflict,
     # not a silent 200.
-    booking_id = _book(client).json()["id"]
+    booking_id = book().json()["id"]
     assert client.put(f"/api/bookings/{booking_id}/cancel").status_code == 200
     resp = client.put(f"/api/bookings/{booking_id}/cancel")
     assert resp.status_code == 409
     assert "already cancelled" in resp.json()["detail"]
 
 
-def test_cancel_completed_booking_returns_409(client):
+def test_cancel_completed_booking_returns_409(client, book):
     # State guard: a completed booking must not be cancellable.
-    booking_id = _book(client).json()["id"]
+    booking_id = book().json()["id"]
     # Move the booking into the completed state directly (no completion
     # endpoint exists in this demo). Use the SAME overridden session the
     # TestClient uses (conftest binds get_db to a tmp_path SQLite file).
@@ -167,10 +190,10 @@ def test_cancel_completed_booking_returns_409(client):
     assert "Completed" in resp.json()["detail"]
 
 
-def test_list_bookings_includes_room_number(client):
+def test_list_bookings_includes_room_number(client, book):
     # Fix: the bookings list carries the human room number ("201"), joined
     # server-side, while keeping room_id for backward compatibility.
-    assert _book(client, room_id=1).status_code == 200
+    assert book(room_id=1).status_code == 200
     body = client.get("/api/bookings/").json()
     assert len(body) == 1
     assert body[0]["room_id"] == 1
