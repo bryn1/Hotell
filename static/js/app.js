@@ -64,20 +64,12 @@ function closeBooking() {
 }
 
 // ============================================================================
-// Room Detail Modal — delegates to rooms.js
+// Room Detail Modal
 // ============================================================================
-
-function openRoomDetail(roomId) {
-  if (typeof roomsModule !== "undefined" && roomsModule.showDetail) {
-    roomsModule.showDetail(roomId);
-  }
-}
-
-function closeRoomDetail() {
-  if (typeof roomsModule !== "undefined" && roomsModule.hideDetail) {
-    roomsModule.hideDetail();
-  }
-}
+// (No wrappers here — card 11536 removed openRoomDetail/closeRoomDetail
+// copies that delegated to a never-defined `roomsModule` global and, because
+// they loaded after render-rooms.js, shadowed that module's working
+// definitions. Card clicks now reach render-rooms.js's real functions.)
 
 // ============================================================================
 // Dark Mode Toggle

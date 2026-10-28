@@ -4,22 +4,15 @@
  * Handles the booking dialog: opening a form for a given room,
  * validating inputs, submitting to the API, and showing success/error
  * states. Follows BEM naming and uses design-system.css tokens.
+ * Depends on: utils/escape.js (escapeHtml), utils/api.js (API_BASE, Endpoints).
  */
+// >400 lines: booking dialog is one flow (form → submit → success/error); split is wave-2 debt (card 11536).
 
 /* global API */
 const bookingFlowModule = (() => {
   // ---- State ----
   let currentRoom = null;
   let isSubmitting = false;
-
-  // ---- XSS guard (audit F2, MC 1290.2) ----
-  // Same escapeHtml pattern as render-rooms.js: API-stored strings (guest
-  // name/email) are user-controlled and MUST be escaped at render time.
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = String(str);
-    return div.innerHTML;
-  }
 
   // ---- Swedish error messages ----
   const ERR_MESSAGES = {
@@ -144,7 +137,7 @@ const bookingFlowModule = (() => {
     container.innerHTML = `
       <div class="booking-form__header">
         <h3 class="booking-form__title">Boka Rum ${escapeHtml(room.room_number)}</h3>
-        <p class="booking-form__subtitle">${roomTypeLabel} — ${formatPrice(room.price_per_night)} kr/natt</p>
+        <p class="booking-form__subtitle">${escapeHtml(roomTypeLabel)} — ${formatPrice(room.price_per_night)} kr/natt</p>
       </div>
 
       <form id="booking-flow-form" novalidate>
@@ -241,6 +234,13 @@ const bookingFlowModule = (() => {
       form.addEventListener('submit', handleSubmit);
     }
 
+    // Focus lands on the first form field when the form is (re)rendered —
+    // the modal is already visible by the time this runs (a11y P1-2).
+    const firstField = document.getElementById('bf-guest-name');
+    if (firstField) {
+      firstField.focus();
+    }
+
     // Set minimum check-out = check-in + 1 day
     const checkInInput = document.getElementById('bf-check-in');
     const checkOutInput = document.getElementById('bf-check-out');
@@ -299,6 +299,13 @@ const bookingFlowModule = (() => {
     try {
       const booking = await submitBooking(currentRoom.id, data);
       const roomNumber = currentRoom ? currentRoom.room_number : null;
+      // Ownership token (card 11535 contract, frontend half card 11536): the
+      // success response carries cancel_token exactly once — store it keyed
+      // per booking id so the cancel action can send it back as
+      // X-Cancel-Token (localStorage is the demo's only per-visitor handle).
+      if (booking.cancel_token) {
+        localStorage.setItem(`cancelToken:${booking.id}`, booking.cancel_token);
+      }
       closeModal();
       showSuccess(booking, roomNumber);
       // Refresh bookings table if it's open
@@ -433,13 +440,10 @@ const bookingFlowModule = (() => {
 
   // ---- Modal ----
   function openBookingModal(roomId) {
-    // Find room from API if not cached
+    // Find room from API if not cached (the modal's room data comes from its
+    // own currentRoom state — the old roomsModule.getRooms guard referenced a
+    // never-defined global and was dead, removed by card 11536).
     if (!currentRoom || currentRoom.id !== roomId) {
-      // Try to find from rooms.js cache or fetch
-      if (typeof roomsModule !== 'undefined' && roomsModule.getRooms) {
-        const allRooms = roomsModule.getRooms();
-        currentRoom = allRooms.find(r => r.id === roomId) || null;
-      }
       if (!currentRoom) {
         // Fetch the room from API
         fetch(`${API}/api/rooms/${roomId}/`).then(r => r.json()).then(room => {
@@ -459,6 +463,13 @@ const bookingFlowModule = (() => {
     const modal = document.getElementById('booking-modal');
     if (modal) {
       modal.classList.remove('hidden');
+      // Focus enters the modal on open (a11y P1-2); on the cached/sync path
+      // the form is already rendered, on the fetch path renderBookingForm
+      // focuses when it lands.
+      const firstField = modal.querySelector('input:not([type="hidden"]), button, select, textarea');
+      if (firstField) {
+        firstField.focus();
+      }
     }
   }
 
@@ -514,6 +525,32 @@ const bookingFlowModule = (() => {
         if (cancelDialog && cancelDialog.open) {
           cancelDialog.close();
         }
+      }
+    });
+
+    // Tab wrap (a11y P1-2, card 11536): while the booking modal is open, Tab
+    // and Shift+Tab cycle inside it and never escape to the page behind.
+    // Simple keydown trap — fine for this dialog; Esc-close is above.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      const modal = document.getElementById('booking-modal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      const focusables = Array.from(
+        modal.querySelectorAll('button, input:not([type="hidden"]), select, textarea, a[href]')
+      ).filter((el) => !el.disabled);
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (!modal.contains(active)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      } else if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
       }
     });
   }

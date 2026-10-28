@@ -78,15 +78,43 @@
   flex-wrap: wrap;
 }
 
+/* ---- Booking modal (audit visual-a11y P1-1, card 11536) ----
+   #booking-modal is a static div (not <dialog>), so it needs the fixed,
+   centered, viewport-locked treatment the design-system .modal-overlay gives
+   its <dialog> modals: fixed inset-0 backdrop (--color-overlay), centered
+   panel with max-height + scroll. z-index 150 — above the dark-mode FAB
+   (100), below toasts (200). Design-system tokens only, no new framework. */
+.booking-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--color-overlay);
+}
+
+.booking-modal__content {
+  width: 90%;
+  max-width: 540px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  padding: var(--space-6);
+}
+
   body.dark-mode .room-detail-modal,
-  body.dark-mode .booking-modal {
+  body.dark-mode .booking-modal__content {
    background: var(--color-bg-card);
    border-color: var(--color-border);
    color: var(--color-text-primary);
   }
 
   body.dark-mode .room-detail-modal::backdrop,
-  body.dark-mode .booking-modal-backdrop {
+  body.dark-mode .booking-modal {
    background: rgba(0, 0, 0, 0.7);
   }
 

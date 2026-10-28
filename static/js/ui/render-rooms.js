@@ -4,9 +4,10 @@
  * Handles room listing, filtering, sorting, and detail modal for
  * Sea View Hotel's rooms page. Uses vanilla JS — no framework.
  *
- * Depends on: design-system.css (CSS custom properties)
+ * Depends on: design-system.css (CSS custom properties), utils/escape.js (escapeHtml)
  * API: GET /api/rooms/
  */
+// >400 lines: whole rooms-page view (list+filters+detail modal) in one cohesive module; split is wave-2 debt (card 11536).
 
 // ============================================================
 // Constants
@@ -82,16 +83,6 @@ let gridContainer = null;
 let roomCountEl = null;
 let clearFiltersBtn = null;
 let dialog = null;
-
-// ============================================================
-// Utility: Escape HTML to prevent XSS
-// ============================================================
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
 
 // ============================================================
 // Utility: Format price in SEK
@@ -206,10 +197,10 @@ function renderRoomCard(room) {
   return `
     <article class="room-card" role="button" tabindex="0"
              data-room-id="${room.id}"
-             aria-label="Rum ${escapeHtml(room.room_number)}, ${typeLabel}, ${capacityLabel}, ${formatPrice(room.price_per_night)}"
+             aria-label="Rum ${escapeHtml(room.room_number)}, ${escapeHtml(typeLabel)}, ${capacityLabel}, ${formatPrice(room.price_per_night)}"
              style="border-top: 4px solid ${typeColor};">
       <div class="room-card__image" style="background: linear-gradient(135deg, ${typeColor}40 0%, ${typeColor}80 50%, ${typeColor} 100%);">
-        <img src="${imgPath}" alt="${typeLabel} rum med havsvy — Room ${escapeHtml(room.room_number)}" loading="lazy" onerror="this.style.display='none';this.parentElement.style.backgroundSize='cover';" class="room-card__img">
+        <img src="${escapeHtml(imgPath)}" alt="${escapeHtml(typeLabel)} rum med havsvy — Room ${escapeHtml(room.room_number)}" loading="lazy" onerror="this.style.display='none';this.parentElement.style.backgroundSize='cover';" class="room-card__img">
         <span class="room-card__image-icon" aria-hidden="true">🌊</span>
         <span class="room-card__badge room-card__badge--sea-view" aria-label="Havsvy">🏖 Havsvy</span>
         <span class="room-card__badge room-card__badge--room-number"># ${escapeHtml(room.room_number)}</span>
@@ -312,7 +303,7 @@ function openRoomDetail(room) {
 
   dialog.innerHTML = `
     <div class="room-detail__image" style="background: linear-gradient(135deg, ${typeColor}40 0%, ${typeColor}80 50%, ${typeColor} 100%);">
-      <img src="${imgPath}" alt="${typeLabel} rum med havsvy — Room ${escapeHtml(room.room_number)}" class="room-detail__img" onerror="this.style.display='none';">
+      <img src="${escapeHtml(imgPath)}" alt="${escapeHtml(typeLabel)} rum med havsvy — Room ${escapeHtml(room.room_number)}" class="room-detail__img" onerror="this.style.display='none';">
       <div class="room-detail__image-nav">
         <span style="font-size: 2rem; opacity: 0.6;" aria-hidden="true">🌊</span>
       </div>

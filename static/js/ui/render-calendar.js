@@ -9,7 +9,7 @@
  * Grid is wrapped in a horizontal-scroll container (.table-wrap) so a full
  * month stays usable on small screens.
  *
- * Depends on: utils/api.js (API_BASE, apiGet, Endpoints)
+ * Depends on: utils/api.js (API_BASE, apiGet, Endpoints), utils/escape.js (escapeHtml)
  */
 
 /* global API_BASE, apiGet, Endpoints */
@@ -144,14 +144,6 @@ const calendarModule = (() => {
     if (label) {
       label.textContent = `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`;
     }
-  }
-
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
   }
 
   // ---- Rendering: Grid ----

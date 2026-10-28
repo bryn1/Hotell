@@ -3,6 +3,7 @@
  *
  * Provides a data table for viewing, filtering, sorting, and cancelling
  * hotel bookings. Follows BEM naming and uses design-system.css tokens.
+ * Depends on: utils/escape.js (escapeHtml), utils/api.js (API_BASE, Endpoints).
  */
 
 const bookingsModule = (() => {
@@ -18,15 +19,6 @@ const bookingsModule = (() => {
     completed: 'Slutförd',
   };
 
-  // ---- XSS guard (audit F2, MC 1290.2) ----
-  // Same escapeHtml pattern as render-rooms.js: API-stored strings (guest
-  // name/email) are user-controlled and MUST be escaped at render time.
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = String(str);
-    return div.innerHTML;
-  }
-
   // ---- API ----
   async function fetchBookings() {
     try {
@@ -40,8 +32,19 @@ const bookingsModule = (() => {
 
   async function cancelBooking(id) {
     try {
-      const res = await fetch(API_BASE + Endpoints.cancel(id), { method: 'PUT' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Ownership (card 11535 contract, frontend half card 11536): bookings
+      // created after the fix carry a cancel_token stored per booking id in
+      // localStorage by booking-flow.js; the endpoint demands it back as
+      // X-Cancel-Token and 403s without it.
+      const headers = {};
+      const token = localStorage.getItem(`cancelToken:${id}`);
+      if (token) headers['X-Cancel-Token'] = token;
+      const res = await fetch(API_BASE + Endpoints.cancel(id), { method: 'PUT', headers });
+      if (!res.ok) {
+        const err = new Error(`HTTP ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
       return await res.json();
     } catch (err) {
       console.error('Failed to cancel booking:', err);
@@ -225,7 +228,12 @@ const bookingsModule = (() => {
           await loadBookings();
           showToast('Bokning avbruten', 'success');
         } catch (err) {
-          showToast('Kunde inte avbryta bokning', 'error');
+          // 403 = the stored cancel token is missing or wrong (cleared
+          // localStorage, another visitor's booking): surface the reason in
+          // the existing error-toast style (card 11536).
+          showToast(err && err.status === 403
+            ? 'Avbokningsnyckeln saknas — du kan bara avbryta dina egna bokningar'
+            : 'Kunde inte avbryta bokning', 'error');
         }
       });
     }
