@@ -76,4 +76,14 @@ else:
 
 if __name__ == "__main__":
     # reload=False: the service unit owns lifecycle; no file-watch overload.
-    uvicorn.run(APP, host=HOST, port=PORT, reload=False, log_level="info")
+    # proxy_headers=False (card 11550, W2b): uvicorn's DEFAULT is
+    # proxy_headers=True with forwarded_allow_ips="127.0.0.1", and ALL
+    # nginx/tunnel traffic here arrives from loopback — so uvicorn itself
+    # rewrote scope["client"] from any X-Forwarded-For (peer trusted),
+    # making demo_guard's socket-peer fallback attacker-controlled again
+    # (one fresh XFF per request reset the visitor identity; audit W2b).
+    # The app reads CF-Connecting-IP explicitly (app/demo_guard.py) and
+    # must NOT let the server rewrite client identity from unauthenticated
+    # XFF headers.
+    uvicorn.run(APP, host=HOST, port=PORT, reload=False, log_level="info",
+                proxy_headers=False)

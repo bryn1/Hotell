@@ -4,12 +4,22 @@ Covers the five W2 backend fixes end to end: (a) PII read-minimization on
 the bookings endpoints, (b) the cancel_token ownership contract, (c) the
 guard's CF-Connecting-IP-only identity (a spoofed X-Forwarded-For no longer
 buys a fresh bucket), (d) fail-closed bucket pruning, and (e) the calendar
-year+December boundary. Booking dates derive from date.today() through the
-shared `book` fixture (the MC 11534 date-portability pattern); the calendar
-probes stay literal on purpose — they encode the 9999/10000 year boundary,
-not current dates.
+year+December boundary — plus (f) the W2b server-layer completion (card
+11550): the guard's peer fallback under REAL uvicorn protocol semantics,
+where uvicorn's default forwarded-header rewriting must stay disabled.
+Booking dates derive from date.today() through the shared `book` fixture
+(the MC 11534 date-portability pattern); the calendar probes stay literal on
+purpose — they encode the 9999/10000 year boundary, not current dates.
 """
+import re
+import socket
+import threading
+import time
+from pathlib import Path
+
+import httpx
 import pytest
+import uvicorn
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -215,3 +225,121 @@ def test_calendar_9999_january_still_valid(client):
 
 def test_calendar_year_10000_still_400(client):
     assert client.get("/api/calendar/10000/1").status_code == 400
+
+
+# --- (f) uvicorn forwarded-header trust (card 11550, W2b) ---------------------
+# uvicorn's default is proxy_headers=True with forwarded_allow_ips
+# "127.0.0.1": behind nginx (peer 127.0.0.1) it rewrites scope["client"]
+# from any X-Forwarded-For, so the guard's socket-peer fallback was
+# forgeable at the SERVER layer even after W2 fixed the app layer. These
+# legs run the real app under real uvicorn protocol semantics on a random
+# free port — TestClient cannot see this class at all: it never executes
+# uvicorn's h11 forwarded-header handling.
+
+
+@pytest.fixture()
+def live_uvicorn(tmp_path):
+    """Start the app under a real uvicorn server; the factory yields the port.
+
+    Fresh DB + fresh guard (fresh buckets) per server; one server per test
+    keeps the shared app's middleware stack exact. Teardown mirrors the
+    guard_client fixture: strip the guard, reset the cached stack.
+    """
+    started = []
+
+    def _start(proxy_headers: bool) -> int:
+        engine = create_engine(
+            f"sqlite:///{tmp_path}/live_hotell.db",
+            connect_args={"check_same_thread": False},
+        )
+        Base.metadata.create_all(bind=engine)
+        TestingSession = sessionmaker(bind=engine)
+
+        def override_get_db():
+            db = TestingSession()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        app.dependency_overrides[get_db] = override_get_db
+        app.middleware_stack = None
+        app.add_middleware(DemoWriteGuard)
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        server = uvicorn.Server(uvicorn.Config(
+            app, host="127.0.0.1", port=port,
+            log_level="critical", proxy_headers=proxy_headers,
+        ))
+        thread = threading.Thread(target=server.run, daemon=True)
+        thread.start()
+        started.append((server, thread, engine))
+        deadline = time.monotonic() + 10.0
+        while not server.started:
+            if not thread.is_alive() or time.monotonic() > deadline:
+                raise RuntimeError("uvicorn did not start on the probe port")
+            time.sleep(0.05)
+        return port
+
+    yield _start
+
+    for server, thread, engine in started:
+        server.should_exit = True
+        thread.join(10)
+        engine.dispose()
+    app.user_middleware[:] = [
+        m for m in app.user_middleware if m.cls is not DemoWriteGuard
+    ]
+    app.middleware_stack = None
+    app.dependency_overrides.clear()
+
+
+def _thirteen_writes_http(port, extra_headers):
+    # Same 13-write probe as _thirteen_writes, over real HTTP against the
+    # uvicorn server (PUT cancel of a nonexistent id: the guard counts it,
+    # the handler only ever answers 404).
+    with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10) as c:
+        return [
+            c.put("/api/bookings/9999/cancel", headers=extra_headers(i)).status_code
+            for i in range(13)
+        ]
+
+
+def test_fresh_xff_throttles_under_real_uvicorn(live_uvicorn):
+    # THE FIX leg: proxy_headers=False (what server.py/run.py now pass).
+    # Fresh X-Forwarded-For per write, but the socket peer stays real, so
+    # all 13 writes share one bucket and the guard throttles from #11.
+    port = live_uvicorn(proxy_headers=False)
+    statuses = _thirteen_writes_http(
+        port, lambda i: {"X-Forwarded-For": f"10.9.9.{i}"}
+    )
+    _assert_429_from_write_eleven(statuses)
+
+
+def test_fresh_xff_bypasses_when_proxy_headers_enabled(live_uvicorn):
+    # Mechanism leg — proves the fix leg can go red: flipping the ONE flag
+    # back to uvicorn's default re-enables the rewrite (loopback peer is in
+    # forwarded_allow_ips), every write looks like a new visitor and nothing
+    # ever throttles. This is the exact W2b live finding of 00:02Z, encoded.
+    port = live_uvicorn(proxy_headers=True)
+    statuses = _thirteen_writes_http(
+        port, lambda i: {"X-Forwarded-For": f"10.9.9.{i}"}
+    )
+    assert statuses == [404] * 13  # never throttled — the bypass, verbatim
+
+
+def test_all_uvicorn_entrypoints_disable_proxy_headers():
+    # Static pin of EVERY uvicorn caller (server.py prod, run.py dev, the
+    # README dev command): a fix at one entrypoint only is how W2b happened
+    # — W2 left uvicorn's own default in place behind nginx. The behavioural
+    # legs carry their own flag; this is what goes red if a caller regresses.
+    root = Path(__file__).resolve().parents[1]
+    call_has_optout = re.compile(
+        r"uvicorn\.run\([^)]*\bproxy_headers\s*=\s*False", re.S
+    )
+    for fname in ("server.py", "run.py"):
+        assert call_has_optout.search((root / fname).read_text()), (
+            f"{fname} must pass proxy_headers=False to uvicorn.run"
+        )
+    assert "--no-proxy-headers" in (root / "README.md").read_text()

@@ -23,7 +23,10 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # Port 8000 är taget av annan tjänst på denna host — använd t.ex. 8500
-uvicorn app.main:app --host 0.0.0.0 --port 8500 --reload
+# --no-proxy-headers: uvicorn får inte skriva om klient-identiteten från
+# X-Forwarded-For — guarden läser CF-Connecting-IP eller socket-peeren
+# (se server.py, card 11550)
+uvicorn app.main:app --host 0.0.0.0 --port 8500 --reload --no-proxy-headers
 
 # Öppna http://localhost:8500
 ```
